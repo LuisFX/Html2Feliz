@@ -2,6 +2,7 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
+        <OutputType>Exe</OutputType>
     </PropertyGroup>
 
     <ItemGroup>
@@ -13,7 +14,7 @@
         <Compile Include="BulmaExampleParser.fs" />
         <Compile Include="Mappings.fs" />
         <Compile Include="Html2Feliz.fs" />
-        <Compile Include="App.fs" />
+        <Compile Include="AppExe.fs" />
     </ItemGroup>
 
     <ItemGroup>

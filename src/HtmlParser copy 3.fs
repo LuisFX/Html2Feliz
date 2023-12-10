@@ -220,7 +220,7 @@ type HtmlDocument =
 
 // --------------------------------------------------------------------------------------
 
-module TextParser =
+module private TextParser =
 
     let toPattern f c = if f c then Some c else None
 
@@ -238,7 +238,7 @@ module TextParser =
 
 // --------------------------------------------------------------------------------------
 
-module HtmlParser =
+module internal HtmlParser =
 
     let wsRegex = lazy (Regex("\\s+"))
 
@@ -468,7 +468,7 @@ module HtmlParser =
         member x.ClearContent() = (x.Content.Value).Clear()
 
     // Tokenises a stream into a sequence of HTML tokens.
-    let tokenise reader =
+    let private tokenise reader =
         let state = HtmlState.Create reader
 
         let rec data (state: HtmlState) =
@@ -1134,16 +1134,7 @@ module HtmlParser =
 
         state.Tokens.Value |> List.rev
 
-    let rec parse
-        (reader: StringReader)
-        (callstack: Fable.Collections.Stack<string * HtmlNode list * string * string * string * HtmlAttribute list>)
-        (docType: string)
-        (elements: HtmlNode list)
-        (expectedTagEnd: string)
-        (parentTagName: string)
-        (internalTokens: HtmlToken list)
-        : string * list<HtmlToken> * list<HtmlNode> =
-
+    let private parse reader =
         let canNotHaveChildren (name: string) =
             match name with
             | "area"
@@ -1216,139 +1207,202 @@ module HtmlParser =
                 TagEnd expectedTagEnd :: tokens
             | _ -> tokens
 
-
-        // let rec parse'
-        //     (reader: StringReader)
-        //     (callstack: Fable.Collections.Stack<string * HtmlNode list * string * string * string * HtmlAttribute list>)
-        //     (docType: string)
-        //     (elements: HtmlNode list)
-        //     (expectedTagEnd: string)
-        //     (parentTagName: string)
-        //     (internalTokens: HtmlToken list)
-        //     : string * list<HtmlToken> * list<HtmlNode> =
-
-        // let parse' = parse' callstack
-
-        let recursiveReturn (dt, tokens, content) =
-            if callstack.Count = 0 then
-                (dt, tokens, content)
-            else
-
-                let _, elements, expectedTagEnd, parentTagName, name, attributes = callstack.Pop()
-                let e = HtmlElement(name, attributes, content)
-                parse reader callstack dt (e :: elements) expectedTagEnd parentTagName tokens
-
-        // let ret =
-        match internalTokens with
-        | DocType dt :: rest -> parse reader callstack (dt.Trim()) elements expectedTagEnd parentTagName rest
-        | Tag (_, "br", []) :: rest ->
-            let t = HtmlText Environment.NewLine
-            parse reader callstack docType (t :: elements) expectedTagEnd parentTagName rest
-        | Tag (true, name, attributes) :: rest ->
-            let e = HtmlElement(name, attributes, [])
-            parse reader callstack docType (e :: elements) expectedTagEnd parentTagName rest
-        | Tag (false, name, attributes) :: rest when canNotHaveChildren name ->
-            let e = HtmlElement(name, attributes, [])
-            parse reader callstack docType (e :: elements) expectedTagEnd parentTagName rest
-        | Tag (_, name, _) :: _ when isImplicitlyClosedByStartTag expectedTagEnd name ->
-            // insert missing </tr> </td> or </th> when starting new row/cell/header
-            parse
-                reader
-                callstack
-                docType
-                elements
-                expectedTagEnd
-                parentTagName
-                (implicitlyCloseByStartTag expectedTagEnd name internalTokens)
-        | TagEnd (name) :: _ when isImplicitlyClosedByEndTag expectedTagEnd name ->
-            // insert missing </tr> </td> or </th> when starting new row/cell/header
-            parse
-                reader
-                callstack
-                docType
-                elements
-                expectedTagEnd
-                parentTagName
-                (implicitlyCloseByEndTag expectedTagEnd internalTokens)
-
-        | Tag (_, name, attributes) :: rest ->
-            (docType, elements, expectedTagEnd, parentTagName, name, attributes)
-            |> callstack.Push
-
-            parse reader callstack docType [] name expectedTagEnd rest
-        | TagEnd name :: _ when name <> expectedTagEnd && name = parentTagName ->
-            // insert missing closing tag
-            parse
-                reader
-                callstack
-                docType
-                elements
-                expectedTagEnd
-                parentTagName
-                (TagEnd expectedTagEnd :: internalTokens)
-        | TagEnd name :: rest when
-            name <> expectedTagEnd
-            && (name
-                <> (new String(expectedTagEnd.ToCharArray() |> Array.rev)))
-            ->
-            // ignore this token if not the expected end tag (or it's reverse, eg: <li></il>)
-            parse reader callstack docType elements expectedTagEnd parentTagName rest
-        | TagEnd _ :: rest -> recursiveReturn (docType, rest, List.rev elements)
-        | Text cont :: rest ->
-            if cont = "" then
-                // ignore this token
-                parse reader callstack docType elements expectedTagEnd parentTagName rest
-            else
-                let t = HtmlText cont
-                parse reader callstack docType (t :: elements) expectedTagEnd parentTagName rest
-        | Comment cont :: rest ->
-            let c = HtmlComment cont
-            parse reader callstack docType (c :: elements) expectedTagEnd parentTagName rest
-        | CData cont :: rest ->
-            let c = HtmlCData cont
-            parse reader callstack docType (c :: elements) expectedTagEnd parentTagName rest
-        | EOF :: _ -> recursiveReturn (docType, [], List.rev elements)
-        | [] -> recursiveReturn (docType, [], List.rev elements)
-
-    // let tokens = tokenise reader
-
-    // let docType, _, elements = ret
-    // tokens
-    // |> parse reader callstack (new Fable.Collections.Stack<_>()) "" [] "" ""
-
-    // if List.isEmpty elements then
-    //     failwith "Invalid HTML"
-
-    // ret
+        let parse'
+            (callstack: Fable.Collections.Stack<string * HtmlNode list * string * string * string * HtmlAttribute list>)
+            docType
+            elements
+            expectedTagEnd
+            parentTagName
+            (tokens: HtmlToken list)
+            =
+            let mutable currentTokens = tokens
+            let mutable currentDocType = docType
+            let mutable currentElements = elements
+            let mutable currentExpectedTagEnd = expectedTagEnd
+            let mutable currentParentTagName = parentTagName
 
 
-    let parseDocument reader = () // HtmlDocument(parse reader)
+            let recursiveReturn (dt, tokens, content) =
+                if callstack.Count = 0 then
+                    (dt, tokens, content)
+                else
+                    let _, elements, expectedTagEnd, parentTagName, name, attributes = callstack.Pop()
+                    let e = HtmlElement(name, attributes, content)
+                    parse' dt (e :: elements) expectedTagEnd parentTagName tokens
+
+            let rec loop
+                ()
+                // (callstack: Fable.Collections.Stack<string * HtmlNode list * string * string * string * HtmlAttribute list>)
+                =
+                // printfn "loop: %A" currentTokens
+                // printfn "Tokens Left: %A" currentTokens.Length
+
+
+                match currentTokens with
+                | DocType dt :: rest ->
+                    // parse' (dt.Trim()) elements expectedTagEnd parentTagName rest
+                    currentDocType <- dt.Trim()
+                    currentTokens <- rest
+                    loop ()
+
+                | Tag (_, "br", []) :: rest ->
+                    // parse' docType (t :: elements) expectedTagEnd parentTagName rest
+                    let t = HtmlText Environment.NewLine
+                    currentElements <- t :: currentElements
+                    currentTokens <- rest
+                    loop ()
+
+                | Tag (true, name, attributes) :: rest ->
+                    let e = HtmlElement(name, attributes, [])
+                    // parse' docType (e :: elements) expectedTagEnd parentTagName rest
+                    currentElements <- e :: currentElements
+                    currentTokens <- rest
+                    loop ()
+
+                | Tag (false, name, attributes) :: rest when canNotHaveChildren name ->
+                    let e = HtmlElement(name, attributes, [])
+                    // parse' docType (e :: elements) expectedTagEnd parentTagName rest
+                    currentElements <- e :: currentElements
+                    currentTokens <- rest
+                    loop ()
+
+                | Tag (_, name, _) :: _ when isImplicitlyClosedByStartTag expectedTagEnd name ->
+                    // insert missing </tr> </td> or </th> when starting new row/cell/header
+                    // parse'
+                    //     docType
+                    //     elements
+                    //     expectedTagEnd
+                    //     parentTagName
+                    //     (implicitlyCloseByStartTag expectedTagEnd name tokens)
+                    currentTokens <- implicitlyCloseByStartTag expectedTagEnd name tokens
+                    loop ()
+
+                | TagEnd (name) :: _ when isImplicitlyClosedByEndTag expectedTagEnd name ->
+                    // insert missing </tr> </td> or </th> when starting new row/cell/header
+                    // parse' docType elements expectedTagEnd parentTagName (implicitlyCloseByEndTag expectedTagEnd tokens)
+                    currentTokens <- implicitlyCloseByEndTag expectedTagEnd tokens
+                    loop ()
+
+                | Tag (_, name, attributes) :: rest ->
+
+                    // callstack.Value <-
+                    //     callstack.Value
+                    //     |> Seq.append (seq { (docType, elements, expectedTagEnd, parentTagName, name, attributes) })
+
+                    // parse' docType [] name expectedTagEnd rest
+                    currentTokens <- rest
+                    currentExpectedTagEnd <- name
+                    currentParentTagName <- parentTagName
+                    loop ()
+
+                | TagEnd name :: _ when name <> expectedTagEnd && name = parentTagName ->
+                    // insert missing closing tag
+                    // parse' docType elements expectedTagEnd parentTagName (TagEnd expectedTagEnd :: tokens)
+                    currentTokens <- TagEnd expectedTagEnd :: tokens
+                    loop ()
+
+                | TagEnd name :: rest when
+                    name <> expectedTagEnd
+                    && (name
+                        <> (new String(expectedTagEnd.ToCharArray() |> Array.rev)))
+                    ->
+                    // ignore this token if not the expected end tag (or it's reverse, eg: <li></il>)
+                    // parse' docType elements expectedTagEnd parentTagName rest
+                    currentTokens <- rest
+                    loop ()
+
+                | TagEnd _ :: rest ->
+                    // recursiveReturn (docType, rest, List.rev elements)
+                    currentTokens <- rest
+                    currentElements <- List.rev currentElements
+                    loop ()
+
+                | Text cont :: rest ->
+                    if cont = "" then
+                        // ignore this token
+                        // parse' docType elements expectedTagEnd parentTagName rest
+                        currentTokens <- rest
+                        loop ()
+                    else
+                        let t = HtmlText cont
+                        // parse' docType (t :: elements) expectedTagEnd parentTagName rest
+                        currentElements <- t :: currentElements
+                        currentTokens <- rest
+                        loop ()
+
+                | Comment cont :: rest ->
+                    let c = HtmlComment cont
+                    // parse' docType (c :: elements) expectedTagEnd parentTagName rest
+                    currentElements <- c :: currentElements
+                    currentTokens <- rest
+                    loop ()
+
+                | CData cont :: rest ->
+                    let c = HtmlCData cont
+                    // parse' docType (c :: elements) expectedTagEnd parentTagName rest
+                    currentElements <- c :: currentElements
+                    currentTokens <- rest
+                    loop ()
+
+                | EOF :: _ ->
+                    // recursiveReturn (docType, [], List.rev elements)
+                    currentElements <- List.rev currentElements
+                    loop ()
+                | [] ->
+                    // recursiveReturn (docType, [], List.rev elements)
+                    currentElements <- List.rev currentElements
+            // loop ()
+
+            if currentTokens.Length > 0 then loop ()
+
+
+            // Return the final state
+            (currentDocType, currentExpectedTagEnd, List.rev currentElements)
+
+        let tokens = tokenise reader
+
+        // for t in tokens do
+        //     printfn "token: %A" t
+
+        let (docType, _, elements) =
+            tokens
+            |> parse' (new Fable.Collections.Stack<_>()) "" [] "" ""
+
+        if List.isEmpty elements then
+            failwith "Invalid HTML"
+
+        (docType, elements)
 
     /// All attribute names and tag names will be normalized to lowercase
     /// All html entities will be replaced by the corresponding characters
     /// All the consecutive whitespace (except for `&nbsp;`) will be collapsed to a single space
     /// All br tags will be replaced by newlines
-    let parseFragment reader tokens =
-        let a, b, c = parse reader (new Fable.Collections.Stack<_>()) "" [] "" "" tokens
-        c
+    let parseDocument reader = HtmlDocument(parse reader)
+
+    /// All attribute names and tag names will be normalized to lowercase
+    /// All html entities will be replaced by the corresponding characters
+    /// All the consecutive whitespace (except for `&nbsp;`) will be collapsed to a single space
+    /// All br tags will be replaced by newlines
+    let parseFragment reader = parse reader |> snd
+
 
 // --------------------------------------------------------------------------------------
 
-// type HtmlDocument with
+type HtmlDocument with
 
-//     /// Parses the specified HTML string
-//     static member Parse(text) =
-//         let reader = StringReader(text)
-//         HtmlParser.parseDocument reader
+    /// Parses the specified HTML string
+    static member Parse(text) =
+        let reader = StringReader(text)
+        HtmlParser.parseDocument reader
 
 type HtmlNode with
 
     /// Parses the specified HTML string to a list of HTML nodes
     static member Parse(text) =
         let reader = StringReader(text)
-        let tokens = HtmlParser.tokenise reader
-        HtmlParser.parseFragment reader tokens
+        HtmlParser.parseFragment reader
 
-// static member ParseRooted(rootName, text) =
-//     let reader = StringReader(text)
-//     HtmlElement(rootName, [], HtmlParser.parseFragment reader)
+    /// Parses the specified HTML string to a list of HTML nodes
+    static member ParseRooted(rootName, text) =
+        let reader = StringReader(text)
+        HtmlElement(rootName, [], HtmlParser.parseFragment reader)
