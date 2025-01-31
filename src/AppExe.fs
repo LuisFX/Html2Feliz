@@ -12,6 +12,7 @@ open System
 open FSharp.Data
 open System.IO
 open Feliz
+open Fable.SimpleHttp
 
 
 [<EntryPoint>]
@@ -5900,16 +5901,23 @@ let main argv =
 
       </div>"""
 
-    // let tokens = tokenise reader
+    let scrapeWebPage (url: string) =
+        let output = Http.get(url) |> Async.RunSynchronously
+        match output with
+        | 200, html -> html
+        | _ -> failwith "Failed to scrape the web page"
 
+    let felizOutput =
+        // let htmlScrape = sample
+        let htmlScrape = scrapeWebPage("https://huro.cssninja.io/webapp-action-page-1.html")
 
-    let felizOutput = parse (sample)
+        parse (htmlScrape)
 
     match felizOutput with
     | Ok htmlNodes ->
         //Output the result appending to a file
-        let nodes = Html2Feliz.format htmlNodes
-        let path = __SOURCE_DIRECTORY__ + "/../sample.fsx"
+        let nodes = Html2Feliz.format htmlNodes true
+        let path = __SOURCE_DIRECTORY__ + "/../sample1.fsx"
         File.WriteAllText(path, nodes)
     | Error err -> failwithf "Error: %s" err
 
