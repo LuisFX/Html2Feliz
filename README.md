@@ -12,3 +12,17 @@ To run it locally in your browser type `npm start` and then open [localhost](htt
 To build the App use `npm build`.
 
 To deploy to github pages use `npm deploy`.
+
+
+## Building and Publishing the cli executable
+
+macos
+```sh
+dotnet publish --runtime osx.11.0-arm64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true  --self-contained true -c release
+```
+
+## CLI usage
+
+```sh
+./Html2Feliz --url https://huro.cssninja.io/webapp-action-page-1.html --output ActionPage1.fs
+```
